@@ -16,6 +16,12 @@ jobs:
       with:
         go-version: 1.18
 
+    - name: login ghcr
+      run: docker login ghcr.io -u yunhorn-bot -p ${{ secrets.GITHUB_TOKEN }} 
+
     - name: Build
       run: make build-latest
+
+    - name: logout ghcr 
+      run: docker logout ghcr.io
 
