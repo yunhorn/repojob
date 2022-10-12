@@ -39,7 +39,8 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		log.Println("comments.len:", *issue.Number, *issue.Title, len(comments))
+		// log.Println("comments.len:", *issue.Number, *issue.Title, len(comments))
+		log.Println("comments.len:", *issue.Number, len(comments))
 
 		for j := 0; j < len(comments); j++ {
 			// log.Println(*comments[j].Body)
@@ -48,7 +49,7 @@ func main() {
 			ops := CommandFromComment(*comments[len(comments)-1].Body)
 			for o := 0; o < len(ops); o++ {
 				op := ops[o]
-				log.Println("op:", op.Name, op.Action)
+				log.Println("op:", op.Name, op.Action, *issue.Number)
 				if op.Name == "label" {
 					if op.Action == "add" {
 						addLabel(ctx, owner, repo, *issue.Number, op.Labels)
