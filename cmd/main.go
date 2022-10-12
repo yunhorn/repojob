@@ -35,9 +35,6 @@ func main() {
 	log.Println("issue.len:", len(issues))
 	for i := 0; i < len(issues); i++ {
 		issue := issues[i]
-		if *issue.Number != 318 {
-			continue
-		}
 		comments, _, err := ghclient.Issues.ListComments(ctx, owner, repo, *issue.Number, &github.IssueListCommentsOptions{})
 		if err != nil {
 			panic(err)
