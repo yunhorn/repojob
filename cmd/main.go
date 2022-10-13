@@ -6,15 +6,18 @@ import (
 	"os"
 	"strings"
 
+	badger "github.com/dgraph-io/badger/v3"
 	"github.com/google/go-github/v47/github" // with go modules enabled (GO111MODULE=on or outside GOPATH)
+	"github.com/yunhorn/repojob/pkg/storage"
 	"golang.org/x/oauth2"
 )
 
 var (
-	ghclient *github.Client
-	ghToken  = os.Getenv("GITHUB_TOKEN")
-	owner    = os.Getenv("OWNER")
-	repo     = os.Getenv("REPO")
+	ghclient     *github.Client
+	ghToken      = os.Getenv("GITHUB_TOKEN")
+	owner        = os.Getenv("OWNER")
+	repo         = os.Getenv("REPO")
+	issueStorage *storage.GithubIssueStorage
 )
 
 func init() {
@@ -22,6 +25,15 @@ func init() {
 		log.Fatal("please set ENV GITHUB_TOKEN|OWNER|REPO")
 	}
 	ghclient = getClient()
+
+	db, err := badger.Open(badger.DefaultOptions("data/badger"))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	issueStorage = &storage.GithubIssueStorage{
+		Db: db,
+	}
 }
 
 // func requestFromPage() {
@@ -57,19 +69,45 @@ func init() {
 
 func main() {
 	ctx := context.Background()
-	issues, resp, err := ghclient.Issues.ListByRepo(ctx, owner, repo, &github.IssueListByRepoOptions{
-		State: "all",
-		ListOptions: github.ListOptions{
-			PerPage: 100,
-		},
-	})
-	if err != nil {
-		panic(err)
-	}
 
-	log.Println("issue.len:", len(issues), resp.NextPage)
+	maxPage := 10
+	page := 1
+	for i := 0; i < maxPage; i++ {
+		issues, resp, err := ghclient.Issues.ListByRepo(ctx, owner, repo, &github.IssueListByRepoOptions{
+			State: "all",
+			ListOptions: github.ListOptions{
+				PerPage: 100,
+				Page:    page,
+			},
+		})
+		if err != nil {
+			panic(err)
+		}
+		jobForissues(ctx, owner, repo, issues)
+		page = resp.NextPage
+		if page == 0 {
+			break
+		}
+	}
+}
+
+func jobForissues(ctx context.Context, owner, repo string, issues []*github.Issue) {
+	log.Println("issue.len:", len(issues))
 	for i := 0; i < len(issues); i++ {
 		issue := issues[i]
+
+		issueCache := issueStorage.Get(owner, repo, *issue.Number)
+		if issueCache.UpdateAt == nil || issue.UpdatedAt.After(*issueCache.UpdateAt) {
+			go func(owner, repo string, issue *github.Issue) {
+				log.Println("update issue updateTime:", owner, repo, *issue.Number)
+				issueStorage.Set(owner, repo, *issue.Number, &storage.IssueCache{
+					UpdateAt: issue.UpdatedAt,
+				})
+			}(owner, repo, issue)
+		} else {
+			continue
+		}
+
 		comments, _, err := ghclient.Issues.ListComments(ctx, owner, repo, *issue.Number, &github.IssueListCommentsOptions{})
 		if err != nil {
 			panic(err)
@@ -134,9 +172,6 @@ func main() {
 			}
 		}
 	}
-
-	//TODO selector comment of have /kind {label}  /close /reopen /remove-kind
-	//TODO save  comment count of issue,issues[i].Comments
 }
 
 func removeMult(source, dest []string) []string {
@@ -235,12 +270,16 @@ func CommandFromComment(comment string) []*RepoOperation {
 	for i := 0; i < len(strs); i++ {
 		str := strs[i]
 		if strings.Contains(str, "/kind") {
-			label := strings.ReplaceAll(str, "/kind ", "")
+			label := strings.ReplaceAll(str, "/kind ", "kind/")
+			label = strings.Replace(label, "\r", "", -1)
+			label = strings.Replace(label, " ", "", -1)
 			labels = append(labels, strings.Replace(label, "\r", "", -1))
 		}
 		if strings.Contains(str, "/remove-kind") {
-			label := strings.ReplaceAll(str, "/remove-kind ", "")
-			removeLabels = append(removeLabels, strings.Replace(label, "\r", "", -1))
+			label := strings.ReplaceAll(str, "/remove-kind ", "kind/")
+			label = strings.Replace(label, "\r", "", -1)
+			label = strings.Replace(label, " ", "", -1)
+			removeLabels = append(removeLabels, label)
 		}
 		if strings.Contains(str, "/close") {
 			ro := &RepoOperation{}
