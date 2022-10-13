@@ -2,6 +2,7 @@ package storage
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"strconv"
 	"time"
@@ -15,12 +16,65 @@ type IssueStorage interface {
 	Get(owner, repo string, issueNumber int) *IssueCache
 }
 
+type DBStorage interface {
+	Init() error
+	Save() error
+}
+
 type IssueCache struct {
 	UpdateAt *time.Time
 }
 
 type GithubIssueStorage struct {
 	Db *badger.DB
+}
+
+func (gh *GithubIssueStorage) Init() error {
+	return nil
+}
+
+func (gh *GithubIssueStorage) Save() error {
+	// repo, err := remote.NewRepository("ghcr.io/yunhorn/repojobdata")
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// ctx := context.Background()
+
+	// generateManifest := func(config ocispec.Descriptor, layers ...ocispec.Descriptor) ([]byte, error) {
+	// 	content := ocispec.Manifest{
+	// 		Config:    config,
+	// 		Layers:    layers,
+	// 		Versioned: specs.Versioned{SchemaVersion: 2},
+	// 	}
+	// 	return json.Marshal(content)
+	// }
+	// // 1. assemble descriptors and manifest
+	// layerBlob := []byte("Hello layer")
+	// layerDesc := content.NewDescriptorFromBytes(ocispec.MediaTypeImageLayer, layerBlob)
+	// configBlob := []byte("Hello config")
+	// configDesc := content.NewDescriptorFromBytes(ocispec.MediaTypeImageConfig, configBlob)
+	// manifestBlob, err := generateManifest(configDesc, layerDesc)
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// manifestDesc := content.NewDescriptorFromBytes(ocispec.MediaTypeImageManifest, manifestBlob)
+
+	// // 2. push and tag
+	// err = repo.Push(ctx, layerDesc, bytes.NewReader(layerBlob))
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// err = repo.Push(ctx, configDesc, bytes.NewReader(configBlob))
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// err = repo.PushReference(ctx, manifestDesc, bytes.NewReader(manifestBlob), "test")
+	// if err != nil {
+	// 	panic(err)
+	// }
+
+	fmt.Println("Succeed")
+	return nil
 }
 
 func (gh *GithubIssueStorage) ScanALLed(owner, repo string) bool {

@@ -114,6 +114,12 @@ func jobForissues(ctx context.Context, owner, repo string, issues []*github.Issu
 		}
 		// log.Println("comments.len:", *issue.Number, *issue.Title, len(comments))
 		log.Println("comments.len:", *issue.UpdatedAt, *issue.Number, len(comments))
+		if issue.Body != nil && *issue.Body != "" {
+			issueBody := &github.IssueComment{
+				Body: issue.Body,
+			}
+			comments = append(comments, issueBody)
+		}
 
 		if len(comments) > 0 {
 			ops := findOperationFromCommenct(comments)
