@@ -105,7 +105,7 @@ func jobForissues(ctx context.Context, owner, repo string, issues []*github.Issu
 				})
 			}(owner, repo, issue)
 		} else {
-			// continue
+			continue
 		}
 
 		comments, _, err := ghclient.Issues.ListComments(ctx, owner, repo, *issue.Number, &github.IssueListCommentsOptions{})
@@ -324,9 +324,10 @@ func CommandFromComment(comment, user string) []*RepoOperation {
 
 			} else {
 				assignersStr = strings.ReplaceAll(assignersStr, "@", "")
+				assignersStr = strings.Replace(assignersStr, "\r", "", -1)
 				assignersStr = strings.ReplaceAll(assignersStr, " ", "")
-				ro.Assigners = []string{assignersStr}
 			}
+			ro.Assigners = []string{assignersStr}
 			result = append(result, ro)
 		}
 		if strings.Contains(str, "/unassign") {
@@ -339,6 +340,7 @@ func CommandFromComment(comment, user string) []*RepoOperation {
 				assignersStr = user
 			} else {
 				assignersStr = strings.ReplaceAll(assignersStr, "@", "")
+				assignersStr = strings.Replace(assignersStr, "\r", "", -1)
 				assignersStr = strings.ReplaceAll(assignersStr, " ", "")
 			}
 			ro.Assigners = []string{assignersStr}
