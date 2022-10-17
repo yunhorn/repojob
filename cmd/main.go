@@ -321,7 +321,7 @@ func CommandFromComment(comment, user string) []*RepoOperation {
 			assignersStr := strings.ReplaceAll(str, "/assign ", "")
 			if assignersStr == "" {
 				//TODO self
-
+				assignersStr = user
 			} else {
 				assignersStr = strings.ReplaceAll(assignersStr, "@", "")
 				assignersStr = strings.Replace(assignersStr, "\r", "", -1)
