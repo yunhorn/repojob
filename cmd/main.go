@@ -105,7 +105,7 @@ func jobForissues(ctx context.Context, owner, repo string, issues []*github.Issu
 				})
 			}(owner, repo, issue)
 		} else {
-			continue
+			// continue
 		}
 
 		comments, _, err := ghclient.Issues.ListComments(ctx, owner, repo, *issue.Number, &github.IssueListCommentsOptions{})
@@ -126,7 +126,7 @@ func jobForissues(ctx context.Context, owner, repo string, issues []*github.Issu
 			// ops := CommandFromComment(*comments[len(comments)-1].Body)
 			for o := 0; o < len(ops); o++ {
 				op := ops[o]
-				// log.Println("op:", op.Name, op.Action, *issue.Number, op.Labels)
+				log.Println("op:", op.Name, op.Action, *issue.Number, op.Labels)
 				if op.Name == "label" {
 					if op.Action == "add" {
 						labels := []string{}
@@ -174,7 +174,15 @@ func jobForissues(ctx context.Context, owner, repo string, issues []*github.Issu
 							reopenIssue(ctx, owner, repo, *issue.Number)
 						}
 					}
+				} else if op.Name == "issueassign" {
+					if op.Action == "assign" {
+						assignIssue(ctx, owner, repo, *issue.Number, op.Assigners)
+					}
+					if op.Action == "unassign" {
+						removeAssign(ctx, owner, repo, *issue.Number, op.Assigners)
+					}
 				}
+
 			}
 		}
 	}
@@ -211,7 +219,8 @@ func findOperationFromCommenct(comments []*github.IssueComment) []*RepoOperation
 	currentRosMap := make(map[string]*RepoOperation)
 	for i := 0; i < len(comments); i++ {
 		c := comments[i]
-		ros := CommandFromComment(*c.Body)
+		user := c.GetUser()
+		ros := CommandFromComment(c.GetBody(), user.GetLogin())
 		if len(ros) == 0 {
 			continue
 		}
@@ -221,6 +230,9 @@ func findOperationFromCommenct(comments []*github.IssueComment) []*RepoOperation
 			r := ros[j]
 			key := r.Name + "#" + r.Action
 			if r.Name == "issue" {
+				key = r.Name
+			}
+			if r.Name == "issueassign" {
 				key = r.Name
 			}
 			if r.Name == "label" {
@@ -247,6 +259,9 @@ func findOperationFromCommenct(comments []*github.IssueComment) []*RepoOperation
 			if r.Name == "issue" {
 				key = r.Name
 			}
+			if r.Name == "issueassign" {
+				key = r.Name
+			}
 			currentRosMap[key] = r
 		}
 
@@ -264,9 +279,9 @@ func findOperationFromCommenct(comments []*github.IssueComment) []*RepoOperation
 	return result
 }
 
-func CommandFromComment(comment string) []*RepoOperation {
+func CommandFromComment(comment, user string) []*RepoOperation {
 	result := []*RepoOperation{}
-	if !strings.Contains(comment, "/kind ") && !strings.Contains(comment, "/remove-kind ") && !strings.Contains(comment, "/close") && !strings.Contains(comment, "/reopen") {
+	if !strings.Contains(comment, "/assign") && !strings.Contains(comment, "/kind ") && !strings.Contains(comment, "/remove-kind ") && !strings.Contains(comment, "/close") && !strings.Contains(comment, "/reopen") {
 		return result
 	}
 
@@ -299,6 +314,36 @@ func CommandFromComment(comment string) []*RepoOperation {
 			ro.Action = "reopen"
 			result = append(result, ro)
 		}
+		if strings.Contains(str, "/assign") {
+			ro := &RepoOperation{}
+			ro.Name = "issueassign"
+			ro.Action = "assign"
+			assignersStr := strings.ReplaceAll(str, "/assign ", "")
+			if assignersStr == "" {
+				//TODO self
+
+			} else {
+				assignersStr = strings.ReplaceAll(assignersStr, "@", "")
+				assignersStr = strings.ReplaceAll(assignersStr, " ", "")
+				ro.Assigners = []string{assignersStr}
+			}
+			result = append(result, ro)
+		}
+		if strings.Contains(str, "/unassign") {
+			ro := &RepoOperation{}
+			ro.Name = "issueassign"
+			ro.Action = "unassign"
+			assignersStr := strings.ReplaceAll(str, "/unassign ", "")
+			if assignersStr == "" {
+				//TODO self
+				assignersStr = user
+			} else {
+				assignersStr = strings.ReplaceAll(assignersStr, "@", "")
+				assignersStr = strings.ReplaceAll(assignersStr, " ", "")
+			}
+			ro.Assigners = []string{assignersStr}
+			result = append(result, ro)
+		}
 	}
 	if len(labels) > 0 {
 		ro := &RepoOperation{}
@@ -323,6 +368,7 @@ type RepoOperation struct {
 	Labels      []string
 	IssueNumber int
 	Reply       string
+	Assigners   []string
 }
 
 func addLabel(ctx context.Context, owner, repo string, issueId int, labels []string) {
@@ -358,6 +404,24 @@ func reopenIssue(ctx context.Context, owner, repo string, issueId int) {
 	})
 	if err != nil {
 		panic(err)
+	}
+}
+
+func assignIssue(ctx context.Context, owner, repo string, issueId int, assigners []string) {
+	if len(assigners) > 0 {
+		_, _, err := ghclient.Issues.AddAssignees(ctx, owner, repo, issueId, assigners)
+		if err != nil {
+			panic(err)
+		}
+	}
+}
+
+func removeAssign(ctx context.Context, owner, repo string, issueId int, unassigners []string) {
+	if len(unassigners) > 0 {
+		_, _, err := ghclient.Issues.RemoveAssignees(ctx, owner, repo, issueId, unassigners)
+		if err != nil {
+			panic(err)
+		}
 	}
 }
 

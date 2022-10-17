@@ -17,3 +17,15 @@ func Test_RemoveMult(t *testing.T) {
 	result := removeMult(source, dest)
 	log.Println(result)
 }
+
+func Test_CommandFromComment(t *testing.T) {
+	comment := `hello
+/assign @user
+/kind hello
+	`
+	ops := CommandFromComment(comment, "user")
+	log.Println(len(ops))
+	for _, ro := range ops {
+		log.Println("ro:", ro.Name, ro.Action, ro.Assigners, len(ro.Assigners))
+	}
+}
