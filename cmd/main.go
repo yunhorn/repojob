@@ -114,19 +114,19 @@ func jobForissues(ctx context.Context, owner, repo string, issues []*github.Issu
 		}
 		// log.Println("comments.len:", *issue.Number, *issue.Title, len(comments))
 		log.Println("comments.len:", *issue.UpdatedAt, *issue.Number, len(comments))
-		if issue.Body != nil && *issue.Body != "" {
+		if issue.GetBody() != "" {
 			issueBody := &github.IssueComment{
 				Body: issue.Body,
+				User: issue.User,
 			}
 			comments = append(comments, issueBody)
 		}
 
 		if len(comments) > 0 {
 			ops := findOperationFromCommenct(comments)
-			// ops := CommandFromComment(*comments[len(comments)-1].Body)
 			for o := 0; o < len(ops); o++ {
 				op := ops[o]
-				log.Println("op:", op.Name, op.Action, *issue.Number, op.Labels)
+				log.Println("op:", op.Name, op.Action, *issue.Number, op.Labels, op.Assigners)
 				if op.Name == "label" {
 					if op.Action == "add" {
 						labels := []string{}
@@ -318,10 +318,10 @@ func CommandFromComment(comment, user string) []*RepoOperation {
 			ro := &RepoOperation{}
 			ro.Name = "issueassign"
 			ro.Action = "assign"
-			assignersStr := strings.ReplaceAll(str, "/assign ", "")
+			assignersStr := strings.ReplaceAll(str, "/assign", "")
 			if assignersStr == "" {
 				//TODO self
-
+				assignersStr = user
 			} else {
 				assignersStr = strings.ReplaceAll(assignersStr, "@", "")
 				assignersStr = strings.Replace(assignersStr, "\r", "", -1)
