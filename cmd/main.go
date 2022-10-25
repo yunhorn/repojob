@@ -302,6 +302,18 @@ func CommandFromComment(comment, user string) []*RepoOperation {
 			label = strings.Replace(label, " ", "", -1)
 			removeLabels = append(removeLabels, label)
 		}
+		if strings.Contains(str, "/remove-area") {
+			label := strings.ReplaceAll(str, "/remove-area ", "area/")
+			label = strings.Replace(label, "\r", "", -1)
+			label = strings.Replace(label, " ", "", -1)
+			removeLabels = append(removeLabels, label)
+		}
+		if strings.Contains(str, "/area") {
+			label := strings.ReplaceAll(str, "/area ", "area/")
+			label = strings.Replace(label, "\r", "", -1)
+			label = strings.Replace(label, " ", "", -1)
+			labels = append(labels, label)
+		}
 		if strings.Contains(str, "/close") {
 			ro := &RepoOperation{}
 			ro.Name = "issue"
