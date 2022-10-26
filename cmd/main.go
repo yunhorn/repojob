@@ -120,8 +120,9 @@ func jobForissues(ctx context.Context, owner, repo string, issues []*github.Issu
 		log.Println("comments.len:", *issue.UpdatedAt, issue.GetNumber(), len(comments))
 		if issue.GetBody() != "" {
 			issueBody := &github.IssueComment{
-				Body: issue.Body,
-				User: issue.User,
+				Body:      issue.Body,
+				User:      issue.User,
+				CreatedAt: issue.CreatedAt,
 			}
 			comments = append(comments, issueBody)
 		}
@@ -227,7 +228,7 @@ func findOperationFromCommenct(comments []*github.IssueComment) []*RepoOperation
 	for i := 0; i < len(comments); i++ {
 		c := comments[i]
 		user := c.GetUser()
-		ros := CommandFromComment(*c.CreatedAt, c.GetBody(), user.GetLogin())
+		ros := CommandFromComment(c.GetCreatedAt(), c.GetBody(), user.GetLogin())
 		if len(ros) == 0 {
 			continue
 		}
