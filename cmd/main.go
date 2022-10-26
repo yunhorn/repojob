@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	badger "github.com/dgraph-io/badger/v3"
 	"github.com/google/go-github/v47/github" // with go modules enabled (GO111MODULE=on or outside GOPATH)
@@ -70,6 +71,8 @@ func init() {
 func main() {
 	ctx := context.Background()
 
+	// issue, _, _ := ghclient.Issues.Get(ctx, owner, repo, 329)
+	// log.Println(issue)
 	maxPage := 10
 	page := 1
 	for i := 0; i < maxPage; i++ {
@@ -83,6 +86,7 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
+
 		jobForissues(ctx, owner, repo, issues)
 		page = resp.NextPage
 		if page == 0 {
@@ -96,11 +100,11 @@ func jobForissues(ctx context.Context, owner, repo string, issues []*github.Issu
 	for i := 0; i < len(issues); i++ {
 		issue := issues[i]
 
-		issueCache := issueStorage.Get(owner, repo, *issue.Number)
-		if issueCache.UpdateAt == nil || issue.UpdatedAt.After(*issueCache.UpdateAt) {
+		issueCache := issueStorage.Get(owner, repo, issue.GetNumber())
+		if issueCache.UpdateAt == nil || issue.GetUpdatedAt().After(*issueCache.UpdateAt) {
 			go func(owner, repo string, issue *github.Issue) {
-				log.Println("update issue updateTime:", owner, repo, *issue.Number)
-				issueStorage.Set(owner, repo, *issue.Number, &storage.IssueCache{
+				log.Println("update issue updateTime:", owner, repo, issue.GetNumber())
+				issueStorage.Set(owner, repo, issue.GetNumber(), &storage.IssueCache{
 					UpdateAt: issue.UpdatedAt,
 				})
 			}(owner, repo, issue)
@@ -108,12 +112,12 @@ func jobForissues(ctx context.Context, owner, repo string, issues []*github.Issu
 			continue
 		}
 
-		comments, _, err := ghclient.Issues.ListComments(ctx, owner, repo, *issue.Number, &github.IssueListCommentsOptions{})
+		comments, _, err := ghclient.Issues.ListComments(ctx, owner, repo, issue.GetNumber(), &github.IssueListCommentsOptions{})
 		if err != nil {
 			panic(err)
 		}
-		// log.Println("comments.len:", *issue.Number, *issue.Title, len(comments))
-		log.Println("comments.len:", *issue.UpdatedAt, *issue.Number, len(comments))
+		// log.Println("comments.len:", issue.GetNumber(), *issue.Title, len(comments))
+		log.Println("comments.len:", *issue.UpdatedAt, issue.GetNumber(), len(comments))
 		if issue.GetBody() != "" {
 			issueBody := &github.IssueComment{
 				Body: issue.Body,
@@ -126,7 +130,7 @@ func jobForissues(ctx context.Context, owner, repo string, issues []*github.Issu
 			ops := findOperationFromCommenct(comments)
 			for o := 0; o < len(ops); o++ {
 				op := ops[o]
-				log.Println("op:", op.Name, op.Action, *issue.Number, op.Labels, op.Assigners)
+				log.Println("op:", op.Name, op.Action, issue.GetNumber(), op.Labels, op.Assigners)
 				if op.Name == "label" {
 					if op.Action == "add" {
 						labels := []string{}
@@ -144,7 +148,7 @@ func jobForissues(ctx context.Context, owner, repo string, issues []*github.Issu
 							}
 						}
 
-						addLabel(ctx, owner, repo, *issue.Number, labels)
+						addLabel(ctx, owner, repo, issue.GetNumber(), labels)
 					}
 					if op.Action == "remove" {
 						labels := []string{}
@@ -161,25 +165,28 @@ func jobForissues(ctx context.Context, owner, repo string, issues []*github.Issu
 								labels = append(labels, label)
 							}
 						}
-						removeLabel(ctx, owner, repo, *issue.Number, labels)
+						removeLabel(ctx, owner, repo, issue.GetNumber(), labels)
 					}
 				} else if op.Name == "issue" {
 					if op.Action == "close" {
-						if *issue.State != "closed" {
-							closeIssue(ctx, owner, repo, *issue.Number)
+						if issue.GetState() != "closed" {
+							closeIssue(ctx, owner, repo, issue.GetNumber())
 						}
 					}
 					if op.Action == "reopen" {
-						if *issue.State != "open" {
-							reopenIssue(ctx, owner, repo, *issue.Number)
+
+						if issue.GetState() != "open" {
+							if issue != nil && !issue.GetClosedAt().After(op.CommentCreateAt) {
+								reopenIssue(ctx, owner, repo, issue.GetNumber())
+							}
 						}
 					}
 				} else if op.Name == "issueassign" {
 					if op.Action == "assign" {
-						assignIssue(ctx, owner, repo, *issue.Number, op.Assigners)
+						assignIssue(ctx, owner, repo, issue.GetNumber(), op.Assigners)
 					}
 					if op.Action == "unassign" {
-						removeAssign(ctx, owner, repo, *issue.Number, op.Assigners)
+						removeAssign(ctx, owner, repo, issue.GetNumber(), op.Assigners)
 					}
 				}
 
@@ -220,7 +227,7 @@ func findOperationFromCommenct(comments []*github.IssueComment) []*RepoOperation
 	for i := 0; i < len(comments); i++ {
 		c := comments[i]
 		user := c.GetUser()
-		ros := CommandFromComment(c.GetBody(), user.GetLogin())
+		ros := CommandFromComment(*c.CreatedAt, c.GetBody(), user.GetLogin())
 		if len(ros) == 0 {
 			continue
 		}
@@ -279,7 +286,7 @@ func findOperationFromCommenct(comments []*github.IssueComment) []*RepoOperation
 	return result
 }
 
-func CommandFromComment(comment, user string) []*RepoOperation {
+func CommandFromComment(createAt time.Time, comment, user string) []*RepoOperation {
 	result := []*RepoOperation{}
 	if !strings.Contains(comment, "/assign") && !strings.Contains(comment, "/kind ") && !strings.Contains(comment, "/remove-kind ") && !strings.Contains(comment, "/close") && !strings.Contains(comment, "/reopen") {
 		return result
@@ -322,6 +329,7 @@ func CommandFromComment(comment, user string) []*RepoOperation {
 		}
 		if strings.Contains(str, "/reopen") {
 			ro := &RepoOperation{}
+			ro.CommentCreateAt = createAt
 			ro.Name = "issue"
 			ro.Action = "reopen"
 			result = append(result, ro)
@@ -344,6 +352,7 @@ func CommandFromComment(comment, user string) []*RepoOperation {
 		}
 		if strings.Contains(str, "/unassign") {
 			ro := &RepoOperation{}
+
 			ro.Name = "issueassign"
 			ro.Action = "unassign"
 			assignersStr := strings.ReplaceAll(str, "/unassign ", "")
@@ -377,12 +386,13 @@ func CommandFromComment(comment, user string) []*RepoOperation {
 }
 
 type RepoOperation struct {
-	Name        string //  label,issue
-	Action      string // add-label remove-label open-issue close-issue
-	Labels      []string
-	IssueNumber int
-	Reply       string
-	Assigners   []string
+	Name            string //  label,issue
+	Action          string // add-label remove-label open-issue close-issue
+	Labels          []string
+	IssueNumber     int
+	Reply           string
+	Assigners       []string
+	CommentCreateAt time.Time
 }
 
 func addLabel(ctx context.Context, owner, repo string, issueId int, labels []string) {
